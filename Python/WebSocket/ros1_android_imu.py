@@ -6,10 +6,12 @@ import socket
 import json
 from sensor_msgs.msg import Imu
 import rospy
+from tf.transformations import quaternion_from_euler
 
 rospy.init_node('android_Sensor')
-publisher = rospy.Publisher("android_imu", Imu, 1)
+publisher = rospy.Publisher("android/imu", Imu, queue_size=1)
 msg = Imu()
+msg.header.frame_id = "imu"
 
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -33,22 +35,33 @@ print("Enter {0}:5000 in the app [PhonePi] and select the sensors to stream. For
 
 async def echo(websocket, path):
     async for message in websocket:
+        msg.header.stamp = rospy.Time.now()
         if path == '//accelerometer':
             data = await websocket.recv()
             djson = json.loads(data)
-            print(data)
+            msg.linear_acceleration.x = float(djson['dataX'])
+            msg.linear_acceleration.y = float(djson['dataY'])
+            msg.linear_acceleration.z = float(djson['dataZ'])
 
         if path == '//gyroscope':
             data = await websocket.recv()
             djson = json.loads(data)
-            print(data)
+            msg.angular_velocity.x = float(djson['dataX'])
+            msg.angular_velocity.y = float(djson['dataY'])
+            msg.angular_velocity.z = float(djson['dataZ'])
       
         if path == '//orientation':
             data = await websocket.recv()
-            print("A")
             djson = json.loads(data)
-            print(data)
-            print(djson['roll'])
+            q = quaternion_from_euler(float(djson['roll']), 
+                                float(djson['pitch']), 
+                                float(djson['azimuth']))
+            msg.orientation.x = q[0]
+            msg.orientation.y = q[1]
+            msg.orientation.z = q[2]
+            msg.orientation.w = q[3]
+            #print(djson['roll'])
+        publisher.publish(msg)
 
 asyncio.get_event_loop().run_until_complete(
     websockets.serve(echo, '0.0.0.0', 5000))
